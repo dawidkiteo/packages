@@ -36,6 +36,23 @@ bool _isBlockTag(String? tag) => _kBlockTags.contains(tag);
 
 bool _isListTag(String tag) => _kListTags.contains(tag);
 
+/// Custom rich text base class - every rich text should contain text span
+abstract class RichTextBase extends Widget {
+  /// Default constructor
+  const RichTextBase({Key? key}) : super(key: key);
+
+  /// Text span for this rich text
+  TextSpan get textSpan;
+}
+
+/// Builder for custom rich text
+typedef RichTextBuilder<T extends RichTextBase> = T Function(
+  TextSpan? text,
+  bool selectable, {
+  TextAlign? textAlign,
+  String? key,
+});
+
 class _BlockElement {
   _BlockElement(this.tag);
 
@@ -90,7 +107,7 @@ abstract class MarkdownBuilderDelegate {
 /// See also:
 ///
 ///  * [Markdown], which is a widget that parses and displays Markdown.
-class MarkdownBuilder implements md.NodeVisitor {
+class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
   /// Creates an object that builds a [Widget] tree from parsed Markdown.
   MarkdownBuilder({
     required this.delegate,
@@ -102,6 +119,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     required this.bulletBuilder,
     required this.builders,
     required this.listItemCrossAxisAlignment,
+    this.richTextBuilder,
     this.fitContent = false,
     this.onTapText,
   });
@@ -141,6 +159,11 @@ class MarkdownBuilder implements md.NodeVisitor {
   /// Defaults to [MarkdownListItemCrossAxisAlignment.baseline], which
   /// does not allow for intrinsic height measurements.
   final MarkdownListItemCrossAxisAlignment listItemCrossAxisAlignment;
+
+  /// Called when building rich text
+  ///
+  /// It is optional, default builder builds [RichText] or [SelectableText.rich]
+  final RichTextBuilder<T>? richTextBuilder;
 
   /// Default tap handler used when [selectable] is set to true
   final VoidCallback? onTapText;
@@ -654,6 +677,22 @@ class MarkdownBuilder implements md.NodeVisitor {
             textAlign: textAlign,
           ),
         );
+      } else if (mergedTexts.isNotEmpty &&
+          mergedTexts.last is T &&
+          child is T) {
+        final T previous = mergedTexts.removeLast() as T;
+        final TextSpan previousTextSpan = previous.textSpan;
+        final List<TextSpan> children = previousTextSpan.children != null
+            ? List<TextSpan>.from(previousTextSpan.children!)
+            : <TextSpan>[previousTextSpan];
+        children.add(child.textSpan);
+        final TextSpan? mergedSpan = _mergeSimilarTextSpans(children);
+        mergedTexts.add(
+          _buildRichText(
+            mergedSpan,
+            textAlign: textAlign,
+          ),
+        );
       } else {
         mergedTexts.add(child);
       }
@@ -749,6 +788,12 @@ class MarkdownBuilder implements md.NodeVisitor {
   Widget _buildRichText(TextSpan? text, {TextAlign? textAlign, String? key}) {
     //Adding a unique key prevents the problem of using the same link handler for text spans with the same text
     key = key ?? '${text.hashCode}${DateTime.now().millisecondsSinceEpoch}';
+
+    final RichTextBuilder? customBuilder = richTextBuilder;
+    if (customBuilder != null) {
+      return customBuilder(text, selectable, textAlign: textAlign, key: key);
+    }
+
     if (selectable) {
       return SelectableText.rich(
         text!,
