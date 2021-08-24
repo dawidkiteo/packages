@@ -322,6 +322,7 @@ class _MarkdownWidgetState extends State<MarkdownWidget>
       fitContent: widget.fitContent,
       listItemCrossAxisAlignment: widget.listItemCrossAxisAlignment,
       onTapText: widget.onTapText,
+      richTextBuilder: widget.richTextBuilder,
     );
 
     _children = builder.build(astNodes);
