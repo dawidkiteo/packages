@@ -170,6 +170,7 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.fitContent = false,
     this.listItemCrossAxisAlignment =
         MarkdownListItemCrossAxisAlignment.baseline,
+    this.richTextBuilder,
   }) : super(key: key);
 
   /// The Markdown to display.
@@ -246,6 +247,11 @@ abstract class MarkdownWidget extends StatefulWidget {
   /// Defaults to [MarkdownListItemCrossAxisAlignment.baseline], which
   /// does not allow for intrinsic height measurements.
   final MarkdownListItemCrossAxisAlignment listItemCrossAxisAlignment;
+
+  /// Called when building rich text
+  ///
+  /// It is optional, default builder builds [RichText] or [SelectableText.rich]
+  final RichTextBuilder? richTextBuilder;
 
   /// Subclasses should override this function to display the given children,
   /// which are the parsed representation of [data].
@@ -384,6 +390,7 @@ class MarkdownBody extends MarkdownWidget {
     MarkdownImageBuilder? imageBuilder,
     MarkdownCheckboxBuilder? checkboxBuilder,
     MarkdownBulletBuilder? bulletBuilder,
+    RichTextBuilder? richTextBuilder,
     Map<String, MarkdownElementBuilder> builders =
         const <String, MarkdownElementBuilder>{},
     MarkdownListItemCrossAxisAlignment listItemCrossAxisAlignment =
@@ -409,6 +416,7 @@ class MarkdownBody extends MarkdownWidget {
           listItemCrossAxisAlignment: listItemCrossAxisAlignment,
           bulletBuilder: bulletBuilder,
           fitContent: fitContent,
+          richTextBuilder: richTextBuilder,
         );
 
   /// See [ScrollView.shrinkWrap]
