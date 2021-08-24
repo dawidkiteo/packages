@@ -36,8 +36,17 @@ bool _isBlockTag(String? tag) => _kBlockTags.contains(tag);
 
 bool _isListTag(String tag) => _kListTags.contains(tag);
 
+/// Custom rich text base class - every rich text should contain text span
+abstract class RichTextBase extends Widget {
+  /// Default constructor
+  const RichTextBase({Key? key}) : super(key: key);
+
+  /// Text span for this rich text
+  TextSpan get textSpan;
+}
+
 /// Builder for custom rich text
-typedef RichTextBuilder = Widget Function(TextSpan? text,
+typedef RichTextBuilder<T extends RichTextBase> = T Function(TextSpan? text,
     {TextAlign? textAlign, String? key});
 
 class _BlockElement {
@@ -94,7 +103,7 @@ abstract class MarkdownBuilderDelegate {
 /// See also:
 ///
 ///  * [Markdown], which is a widget that parses and displays Markdown.
-class MarkdownBuilder implements md.NodeVisitor {
+class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
   /// Creates an object that builds a [Widget] tree from parsed Markdown.
   MarkdownBuilder({
     required this.delegate,
@@ -155,7 +164,7 @@ class MarkdownBuilder implements md.NodeVisitor {
   /// Called when building rich text
   ///
   /// It is optional, default builder builds [RichText] or [SelectableText.rich]
-  final RichTextBuilder? richTextBuilder;
+  final RichTextBuilder<T>? richTextBuilder;
 
   /// Default tap handler used when [selectable] is set to true
   final VoidCallback? onTapText;
@@ -703,6 +712,22 @@ class MarkdownBuilder implements md.NodeVisitor {
         if (child.textSpan != null) {
           children.add(child.textSpan!);
         }
+        final TextSpan? mergedSpan = _mergeSimilarTextSpans(children);
+        mergedTexts.add(
+          _buildRichText(
+            mergedSpan,
+            textAlign: textAlign,
+          ),
+        );
+      } else if (mergedTexts.isNotEmpty &&
+          mergedTexts.last is T &&
+          child is T) {
+        final T previous = mergedTexts.removeLast() as T;
+        final TextSpan previousTextSpan = previous.textSpan;
+        final List<TextSpan> children = previousTextSpan.children != null
+            ? List<TextSpan>.from(previousTextSpan.children!)
+            : <TextSpan>[previousTextSpan];
+        children.add(child.textSpan);
         final TextSpan? mergedSpan = _mergeSimilarTextSpans(children);
         mergedTexts.add(
           _buildRichText(
