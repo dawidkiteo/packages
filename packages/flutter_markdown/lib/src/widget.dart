@@ -168,6 +168,7 @@ abstract class MarkdownWidget extends StatefulWidget {
     this.listItemCrossAxisAlignment =
         MarkdownListItemCrossAxisAlignment.baseline,
     this.softLineBreak = false,
+    this.richTextBuilder,
   }) : super(key: key);
 
   /// The Markdown to display.
@@ -264,6 +265,11 @@ abstract class MarkdownWidget extends StatefulWidget {
   /// Default these spaces are removed in accordance with the Markdown
   /// specification on soft line breaks when lines of text are joined.
   final bool softLineBreak;
+
+  /// Called when building rich text
+  ///
+  /// It is optional, default builder builds [RichText] or [SelectableText.rich]
+  final RichTextBuilder? richTextBuilder;
 
   /// Subclasses should override this function to display the given children,
   /// which are the parsed representation of [data].
@@ -404,6 +410,7 @@ class MarkdownBody extends MarkdownWidget {
     MarkdownImageBuilder? imageBuilder,
     MarkdownCheckboxBuilder? checkboxBuilder,
     MarkdownBulletBuilder? bulletBuilder,
+    RichTextBuilder? richTextBuilder,
     Map<String, MarkdownElementBuilder> builders =
         const <String, MarkdownElementBuilder>{},
     Map<String, MarkdownPaddingBuilder> paddingBuilders =
@@ -434,6 +441,7 @@ class MarkdownBody extends MarkdownWidget {
           bulletBuilder: bulletBuilder,
           fitContent: fitContent,
           softLineBreak: softLineBreak,
+          richTextBuilder: richTextBuilder,
         );
 
   /// If [shrinkWrap] is `true`, [MarkdownBody] will take the minimum height
