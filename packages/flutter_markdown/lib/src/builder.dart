@@ -46,8 +46,12 @@ abstract class RichTextBase extends Widget {
 }
 
 /// Builder for custom rich text
-typedef RichTextBuilder<T extends RichTextBase> = T Function(TextSpan? text,
-    {TextAlign? textAlign, String? key});
+typedef RichTextBuilder<T extends RichTextBase> = T Function(
+  TextSpan? text,
+  bool selectable, {
+  TextAlign? textAlign,
+  String? key,
+});
 
 class _BlockElement {
   _BlockElement(this.tag);
@@ -858,7 +862,7 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
 
     final RichTextBuilder? customBuilder = richTextBuilder;
     if (customBuilder != null) {
-      return customBuilder(text, textAlign: textAlign, key: key);
+      return customBuilder(text, selectable, textAlign: textAlign, key: key);
     }
     if (selectable) {
       return SelectableText.rich(
