@@ -36,6 +36,10 @@ bool _isBlockTag(String? tag) => _kBlockTags.contains(tag);
 
 bool _isListTag(String tag) => _kListTags.contains(tag);
 
+/// Builder for custom rich text
+typedef RichTextBuilder = Widget Function(TextSpan? text,
+    {TextAlign? textAlign, String? key});
+
 class _BlockElement {
   _BlockElement(this.tag);
 
@@ -103,6 +107,7 @@ class MarkdownBuilder implements md.NodeVisitor {
     required this.builders,
     required this.paddingBuilders,
     required this.listItemCrossAxisAlignment,
+    this.richTextBuilder,
     this.fitContent = false,
     this.onTapText,
     this.softLineBreak = false,
@@ -146,6 +151,11 @@ class MarkdownBuilder implements md.NodeVisitor {
   /// Defaults to [MarkdownListItemCrossAxisAlignment.baseline], which
   /// does not allow for intrinsic height measurements.
   final MarkdownListItemCrossAxisAlignment listItemCrossAxisAlignment;
+
+  /// Called when building rich text
+  ///
+  /// It is optional, default builder builds [RichText] or [SelectableText.rich]
+  final RichTextBuilder? richTextBuilder;
 
   /// Default tap handler used when [selectable] is set to true
   final VoidCallback? onTapText;
@@ -814,6 +824,11 @@ class MarkdownBuilder implements md.NodeVisitor {
   Widget _buildRichText(TextSpan? text, {TextAlign? textAlign, String? key}) {
     //Adding a unique key prevents the problem of using the same link handler for text spans with the same text
     final Key k = key == null ? UniqueKey() : Key(key);
+
+    final RichTextBuilder? customBuilder = richTextBuilder;
+    if (customBuilder != null) {
+      return customBuilder(text, textAlign: textAlign, key: key);
+    }
     if (selectable) {
       return SelectableText.rich(
         text!,
