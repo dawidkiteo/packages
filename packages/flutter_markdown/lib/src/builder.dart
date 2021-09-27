@@ -387,6 +387,7 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
 
       if (current.children.isNotEmpty) {
         child = Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: fitContent
               ? CrossAxisAlignment.start
               : CrossAxisAlignment.stretch,
