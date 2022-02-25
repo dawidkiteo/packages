@@ -75,6 +75,12 @@ void main() {
     expect(opts.oneLanguage, isTrue);
   });
 
+  test('parse args - ast_out', () {
+    final PigeonOptions opts =
+        Pigeon.parseArgs(<String>['--ast_out', 'stdout']);
+    expect(opts.astOut, equals('stdout'));
+  });
+
   test('simple parse api', () {
     const String code = '''
 class Input1 {
@@ -492,7 +498,23 @@ abstract class Api {
     const String code = '''
 class Foo {
   int? x;
-  Foo(this.x);
+  Foo({this.x});
+}
+
+@HostApi()
+abstract class Api {
+  Foo doit(Foo foo);
+}
+''';
+    final ParseResults results = _parseSource(code);
+    expect(results.errors.length, 0);
+  });
+
+  test('constructor body in data class', () {
+    const String code = '''
+class Foo {
+  int? x;
+  Foo({this.x}) { print('hi'); }
 }
 
 @HostApi()
@@ -506,6 +528,42 @@ abstract class Api {
     expect(results.errors[0].message, contains('Constructor'));
   });
 
+  test('constructor body in data class', () {
+    const String code = '''
+class Foo {
+  int? x;
+  Foo() : x = 0;
+}
+
+@HostApi()
+abstract class Api {
+  Foo doit(Foo foo);
+}
+''';
+    final ParseResults results = _parseSource(code);
+    expect(results.errors.length, 1);
+    expect(results.errors[0].lineNumber, 3);
+    expect(results.errors[0].message, contains('Constructor'));
+  });
+
+  test('constructor in api class', () {
+    const String code = '''
+class Foo {
+  int? x;
+}
+
+@HostApi()
+abstract class Api {
+  Api() { print('hi'); }
+  Foo doit(Foo foo);
+}
+''';
+    final ParseResults results = _parseSource(code);
+    expect(results.errors.length, 1);
+    expect(results.errors[0].lineNumber, 7);
+    expect(results.errors[0].message, contains('Constructor'));
+  });
+
   test('nullable api arguments', () {
     const String code = '''
 class Foo {
@@ -515,23 +573,6 @@ class Foo {
 @HostApi()
 abstract class Api {
   Foo doit(Foo foo1, Foo? foo2);
-}
-''';
-    final ParseResults results = _parseSource(code);
-    expect(results.errors.length, 1);
-    expect(results.errors[0].lineNumber, 7);
-    expect(results.errors[0].message, contains('Nullable'));
-  });
-
-  test('nullable api return', () {
-    const String code = '''
-class Foo {
-  int? x;
-}
-
-@HostApi()
-abstract class Api {
-  Foo? doit(Foo foo);
 }
 ''';
     final ParseResults results = _parseSource(code);
@@ -945,5 +986,63 @@ abstract class HostApiBridge {
     final ParseResults results = _parseSource(code);
     expect(results.root.enums.length, 1);
     expect(results.root.enums[0].name, 'MessageKey');
+  });
+
+  test('@ConfigurePigeon JavaOptions.copyrightHeader', () {
+    const String code = '''
+@ConfigurePigeon(PigeonOptions(
+  javaOptions: JavaOptions(copyrightHeader: <String>['A', 'Header']),
+))
+class Message {
+  int? id;
+}
+''';
+
+    final ParseResults results = _parseSource(code);
+    final PigeonOptions options = PigeonOptions.fromMap(results.pigeonOptions!);
+    expect(options.javaOptions!.copyrightHeader, <String>['A', 'Header']);
+  });
+
+  test('@ConfigurePigeon DartOptions.copyrightHeader', () {
+    const String code = '''
+@ConfigurePigeon(PigeonOptions(
+  dartOptions: DartOptions(copyrightHeader: <String>['A', 'Header']),
+))
+class Message {
+  int? id;
+}
+''';
+
+    final ParseResults results = _parseSource(code);
+    final PigeonOptions options = PigeonOptions.fromMap(results.pigeonOptions!);
+    expect(options.dartOptions!.copyrightHeader, <String>['A', 'Header']);
+  });
+
+  test('@ConfigurePigeon ObjcOptions.copyrightHeader', () {
+    const String code = '''
+@ConfigurePigeon(PigeonOptions(
+  objcOptions: ObjcOptions(copyrightHeader: <String>['A', 'Header']),
+))
+class Message {
+  int? id;
+}
+''';
+
+    final ParseResults results = _parseSource(code);
+    final PigeonOptions options = PigeonOptions.fromMap(results.pigeonOptions!);
+    expect(options.objcOptions!.copyrightHeader, <String>['A', 'Header']);
+  });
+
+  test('return nullable', () {
+    const String code = '''
+@HostApi()
+abstract class Api {
+  int? calc();
+}
+''';
+
+    final ParseResults results = _parseSource(code);
+    expect(results.errors.length, 0);
+    expect(results.root.apis[0].methods[0].returnType.isNullable, isTrue);
   });
 }

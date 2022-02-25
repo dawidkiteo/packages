@@ -110,7 +110,10 @@ void main() {
     final String code = sink.toString();
     expect(code, contains('#import "foo.h"'));
     expect(code, contains('@implementation Foobar'));
-    expect(code, contains('result.enum1 = [dict[@"enum1"] integerValue];'));
+    expect(
+        code,
+        contains(
+            'pigeonResult.enum1 = [GetNullableObject(dict, @"enum1") integerValue];'));
   });
 
   test('gen one class header with enum', () {
@@ -184,6 +187,7 @@ void main() {
     expect(code, contains('@interface Input'));
     expect(code, contains('@interface Output'));
     expect(code, contains('@protocol Api'));
+    expect(code, contains('/// @return `nil` only when `error != nil`.'));
     expect(code, matches('nullable Output.*doSomething.*Input.*FlutterError'));
     expect(code, matches('ApiSetup.*<Api>.*_Nullable'));
   });
@@ -307,7 +311,8 @@ void main() {
     generateObjcSource(const ObjcOptions(header: 'foo.h'), root, sink);
     final String code = sink.toString();
     expect(code, contains('@implementation Foobar'));
-    expect(code, contains('result.aBool = dict[@"aBool"];'));
+    expect(code,
+        contains('pigeonResult.aBool = GetNullableObject(dict, @"aBool");'));
   });
 
   test('nested class header', () {
@@ -350,7 +355,10 @@ void main() {
     final StringBuffer sink = StringBuffer();
     generateObjcSource(const ObjcOptions(header: 'foo.h'), root, sink);
     final String code = sink.toString();
-    expect(code, contains('result.nested = [Input fromMap:dict[@"nested"]];'));
+    expect(
+        code,
+        contains(
+            'pigeonResult.nested = [Input fromMap:GetNullableObject(dict, @"nested")];'));
     expect(code, matches('[self.nested toMap].*@"nested"'));
   });
 
@@ -741,7 +749,7 @@ void main() {
     expect(
         code,
         contains(
-            '(void)doSomethingWithCompletion:(void(^)(ABCOutput *, NSError *_Nullable))completion'));
+            '(void)doSomethingWithCompletion:(void(^)(ABCOutput *_Nullable, NSError *_Nullable))completion'));
   });
 
   test('gen flutter void arg source', () {
@@ -768,7 +776,7 @@ void main() {
     expect(
         code,
         contains(
-            '(void)doSomethingWithCompletion:(void(^)(ABCOutput *, NSError *_Nullable))completion'));
+            '(void)doSomethingWithCompletion:(void(^)(ABCOutput *_Nullable, NSError *_Nullable))completion'));
     expect(code, contains('channel sendMessage:nil'));
   });
 
@@ -1477,7 +1485,7 @@ void main() {
       expect(
           code,
           contains(
-              '- (void)addX:(NSNumber *)x y:(NSNumber *)y completion:(void(^)(NSNumber *, NSError *_Nullable))completion;'));
+              '- (void)addX:(NSNumber *)x y:(NSNumber *)y completion:(void(^)(NSNumber *_Nullable, NSError *_Nullable))completion;'));
     }
     {
       final StringBuffer sink = StringBuffer();
@@ -1487,7 +1495,7 @@ void main() {
       expect(
           code,
           contains(
-              '- (void)addX:(NSNumber *)arg_x y:(NSNumber *)arg_y completion:(void(^)(NSNumber *, NSError *_Nullable))completion {'));
+              '- (void)addX:(NSNumber *)arg_x y:(NSNumber *)arg_y completion:(void(^)(NSNumber *_Nullable, NSError *_Nullable))completion {'));
       expect(code, contains('[channel sendMessage:@[arg_x, arg_y] reply:'));
     }
   });
@@ -1558,5 +1566,90 @@ void main() {
       final String code = sink.toString();
       expect(code, matches('divideValue:.*by:.*completion.*{'));
     }
+  });
+
+  test('test non null field', () {
+    final Root root = Root(apis: <Api>[], classes: <Class>[
+      Class(name: 'Foobar', fields: <NamedType>[
+        NamedType(
+            type: const TypeDeclaration(baseName: 'String', isNullable: false),
+            name: 'field1',
+            offset: null)
+      ]),
+    ], enums: <Enum>[]);
+    final StringBuffer sink = StringBuffer();
+    generateObjcHeader(const ObjcOptions(), root, sink);
+    final String code = sink.toString();
+    expect(code, contains('@interface Foobar'));
+    expect(code, contains('@property(nonatomic, copy) NSString * field1'));
+  });
+
+  test('return nullable flutter header', () {
+    final Root root = Root(
+      apis: <Api>[
+        Api(name: 'Api', location: ApiLocation.flutter, methods: <Method>[
+          Method(
+              name: 'doit',
+              returnType: const TypeDeclaration(
+                baseName: 'int',
+                isNullable: true,
+              ),
+              arguments: <NamedType>[])
+        ])
+      ],
+      classes: <Class>[],
+      enums: <Enum>[],
+    );
+    final StringBuffer sink = StringBuffer();
+    generateObjcHeader(const ObjcOptions(), root, sink);
+    final String code = sink.toString();
+    expect(
+        code,
+        matches(
+            r'doitWithCompletion.*void.*NSNumber \*_Nullable.*NSError.*completion;'));
+  });
+
+  test('return nullable flutter source', () {
+    final Root root = Root(
+      apis: <Api>[
+        Api(name: 'Api', location: ApiLocation.flutter, methods: <Method>[
+          Method(
+              name: 'doit',
+              returnType: const TypeDeclaration(
+                baseName: 'int',
+                isNullable: true,
+              ),
+              arguments: <NamedType>[])
+        ])
+      ],
+      classes: <Class>[],
+      enums: <Enum>[],
+    );
+    final StringBuffer sink = StringBuffer();
+    generateObjcSource(const ObjcOptions(), root, sink);
+    final String code = sink.toString();
+    expect(code, matches(r'doitWithCompletion.*NSNumber \*_Nullable'));
+  });
+
+  test('return nullable host header', () {
+    final Root root = Root(
+      apis: <Api>[
+        Api(name: 'Api', location: ApiLocation.host, methods: <Method>[
+          Method(
+              name: 'doit',
+              returnType: const TypeDeclaration(
+                baseName: 'int',
+                isNullable: true,
+              ),
+              arguments: <NamedType>[])
+        ])
+      ],
+      classes: <Class>[],
+      enums: <Enum>[],
+    );
+    final StringBuffer sink = StringBuffer();
+    generateObjcHeader(const ObjcOptions(), root, sink);
+    final String code = sink.toString();
+    expect(code, matches(r'nullable NSNumber.*doitWithError'));
   });
 }

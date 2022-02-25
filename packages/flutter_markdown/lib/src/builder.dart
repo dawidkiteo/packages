@@ -186,7 +186,7 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
   final List<_InlineElement> _inlines = <_InlineElement>[];
   final List<GestureRecognizer> _linkHandlers = <GestureRecognizer>[];
   String? _currentBlockTag;
-  String? _lastTag;
+  String? _lastVisitedTag;
   bool _isInBlockquote = false;
 
   /// Returns widgets that display the given Markdown nodes.
@@ -217,6 +217,7 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
   bool visitElementBefore(md.Element element) {
     final String tag = element.tag;
     _currentBlockTag ??= tag;
+    _lastVisitedTag = tag;
 
     if (builders.containsKey(tag)) {
       builders[tag]!.visitElementBefore(element);
@@ -330,7 +331,10 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
 
       // Leading spaces following a hard line break are ignored.
       // https://github.github.com/gfm/#example-657
-      if (_lastTag == 'br') {
+      // Leading spaces in paragraph or list item are ignored
+      // https://github.github.com/gfm/#example-192
+      // https://github.github.com/gfm/#example-236
+      if (const <String>['ul', 'ol', 'p', 'br'].contains(_lastVisitedTag)) {
         text = text.replaceAll(_leadingSpacesPattern, '');
       }
 
@@ -367,6 +371,8 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
     if (child != null) {
       _inlines.last.children.add(child);
     }
+
+    _lastVisitedTag = null;
   }
 
   @override
@@ -516,7 +522,7 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
     if (_currentBlockTag == tag) {
       _currentBlockTag = null;
     }
-    _lastTag = tag;
+    _lastVisitedTag = tag;
   }
 
   Widget _buildImage(String src, String? title, String? alt) {

@@ -20,9 +20,11 @@ class DartOptions {
   /// Creates a [DartOptions] from a Map representation where:
   /// `x = DartOptions.fromMap(x.toMap())`.
   static DartOptions fromMap(Map<String, Object> map) {
+    final Iterable<dynamic>? copyrightHeader =
+        map['copyrightHeader'] as Iterable<dynamic>?;
     return DartOptions(
       isNullSafe: map['isNullSafe'] as bool? ?? true,
-      copyrightHeader: map['copyrightHeader'] as Iterable<String>?,
+      copyrightHeader: copyrightHeader?.cast<String>(),
     );
   }
 
@@ -50,8 +52,13 @@ String _escapeForDartSingleQuotedString(String raw) {
       .replaceAll(r"'", r"\'");
 }
 
+/// Calculates the name of the codec class that will be generated for [api].
 String _getCodecName(Api api) => '_${api.name}Codec';
 
+/// Writes the codec that will be used by [api].
+/// Example:
+///
+/// class FooCodec extends StandardMessageCodec {...}
 void _writeCodec(Indent indent, String codecName, Api api, Root root) {
   indent.write('class $codecName extends StandardMessageCodec ');
   indent.scoped('{', '}', () {
@@ -113,9 +120,12 @@ String _makeGenericCastCall(TypeDeclaration type, String nullTag) {
 String _getSafeArgumentName(int count, NamedType field) =>
     field.name.isEmpty ? 'arg$count' : 'arg_' + field.name;
 
+/// Generates an argument name if one isn't defined.
 String _getArgumentName(int count, NamedType field) =>
     field.name.isEmpty ? 'arg$count' : field.name;
 
+/// Generates the arguments code for [func]
+/// Example: (func, getArgumentName, nullTag) -> 'String? foo, int bar'
 String _getMethodArgumentsSignature(
   Method func,
   String Function(int index, NamedType arg) getArgumentName,
@@ -130,6 +140,15 @@ String _getMethodArgumentsSignature(
         }).join(', ');
 }
 
+/// Writes the code for host [Api], [api].
+/// Example:
+/// class FooCodec extends StandardMessageCodec {...}
+///
+/// class Foo {
+///   Foo(BinaryMessenger? binaryMessenger) {}
+///   static const MessageCodec<Object?> codec = FooCodec();
+///   Future<int> add(int x, int y) async {...}
+/// }
 void _writeHostApi(DartOptions opt, Indent indent, Api api, Root root) {
   assert(api.location == ApiLocation.host);
   final String codecName = _getCodecName(api);
@@ -167,7 +186,7 @@ final BinaryMessenger$nullTag _binaryMessenger;
         argSignature = _getMethodArgumentsSignature(func, argNameFunc, nullTag);
       }
       indent.write(
-        'Future<${_addGenericTypes(func.returnType, nullTag)}> ${func.name}($argSignature) async ',
+        'Future<${_addGenericTypesNullable(func.returnType, nullTag)}> ${func.name}($argSignature) async ',
       );
       indent.scoped('{', '}', () {
         final String channelName = makeChannelName(api, func);
@@ -181,16 +200,18 @@ final BinaryMessenger$nullTag _binaryMessenger;
         final String returnType =
             _makeGenericTypeArguments(func.returnType, nullTag);
         final String castCall = _makeGenericCastCall(func.returnType, nullTag);
+        const String accessor = 'replyMap[\'${Keys.result}\']';
+        final String unwrapper =
+            func.returnType.isNullable ? '' : unwrapOperator;
         final String returnStatement = func.returnType.isVoid
             ? 'return;'
-            : 'return (replyMap[\'${Keys.result}\'] as $returnType$nullTag)$unwrapOperator$castCall;';
+            : 'return ($accessor as $returnType$nullTag)$unwrapper$castCall;';
         indent.format('''
 final Map<Object$nullTag, Object$nullTag>$nullTag replyMap =\n\t\tawait channel.send($sendArgument) as Map<Object$nullTag, Object$nullTag>$nullTag;
 if (replyMap == null) {
 \tthrow PlatformException(
 \t\tcode: 'channel-error',
 \t\tmessage: 'Unable to establish connection on channel.',
-\t\tdetails: null,
 \t);
 } else if (replyMap['error'] != null) {
 \tfinal Map<Object$nullTag, Object$nullTag> error = (replyMap['${Keys.error}'] as Map<Object$nullTag, Object$nullTag>$nullTag)$unwrapOperator;
@@ -198,7 +219,19 @@ if (replyMap == null) {
 \t\tcode: (error['${Keys.errorCode}'] as String$nullTag)$unwrapOperator,
 \t\tmessage: error['${Keys.errorMessage}'] as String$nullTag,
 \t\tdetails: error['${Keys.errorDetails}'],
-\t);
+\t);''');
+        // On iOS we can return nil from functions to accommodate error
+        // handling.  Returning a nil value and not returning an error is an
+        // exception.
+        if (!func.returnType.isNullable && !func.returnType.isVoid) {
+          indent.format('''
+} else if (replyMap['${Keys.result}'] == null) {
+\tthrow PlatformException(
+\t\tcode: 'null-error',
+\t\tmessage: 'Host platform returned null value for non-null return value.',
+\t);''');
+        }
+        indent.format('''
 } else {
 \t$returnStatement
 }''');
@@ -207,6 +240,15 @@ if (replyMap == null) {
   });
 }
 
+/// Writes the code for host [Api], [api].
+/// Example:
+/// class FooCodec extends StandardMessageCodec {...}
+///
+/// abstract class Foo {
+///   static const MessageCodec<Object?> codec = FooCodec();
+///   int add(int x, int y);
+///   static void setup(Foo api, {BinaryMessenger? binaryMessenger}) {...}
+/// }
 void _writeFlutterApi(
   DartOptions opt,
   Indent indent,
@@ -227,8 +269,8 @@ void _writeFlutterApi(
     for (final Method func in api.methods) {
       final bool isAsync = func.isAsynchronous;
       final String returnType = isAsync
-          ? 'Future<${_addGenericTypes(func.returnType, nullTag)}>'
-          : _addGenericTypes(func.returnType, nullTag);
+          ? 'Future<${_addGenericTypesNullable(func.returnType, nullTag)}>'
+          : _addGenericTypesNullable(func.returnType, nullTag);
       final String argSignature = _getMethodArgumentsSignature(
         func,
         _getArgumentName,
@@ -266,7 +308,7 @@ void _writeFlutterApi(
             );
             indent.scoped('{', '});', () {
               final String returnType =
-                  _addGenericTypes(func.returnType, nullTag);
+                  _addGenericTypesNullable(func.returnType, nullTag);
               final bool isAsync = func.isAsynchronous;
               final String emptyReturnStatement = isMockHandler
                   ? 'return <Object$nullTag, Object$nullTag>{};'
@@ -359,8 +401,9 @@ String _addGenericTypes(TypeDeclaration type, String nullTag) {
   }
 }
 
-String _addGenericTypesNullable(NamedType field, String nullTag) {
-  return '${_addGenericTypes(field.type, nullTag)}$nullTag';
+String _addGenericTypesNullable(TypeDeclaration type, String nullTag) {
+  final String genericdType = _addGenericTypes(type, nullTag);
+  return type.isNullable ? '$genericdType$nullTag' : genericdType;
 }
 
 /// Generates Dart source code for the given AST represented by [root],
@@ -373,43 +416,54 @@ void generateDart(DartOptions opt, Root root, StringSink sink) {
   final List<String> customEnumNames =
       root.enums.map((Enum x) => x.name).toList();
   final Indent indent = Indent(sink);
-  if (opt.copyrightHeader != null) {
-    addLines(indent, opt.copyrightHeader!, linePrefix: '// ');
+
+  void writeHeader() {
+    if (opt.copyrightHeader != null) {
+      addLines(indent, opt.copyrightHeader!, linePrefix: '// ');
+    }
+    indent.writeln('// $generatedCodeWarning');
+    indent.writeln('// $seeAlsoWarning');
+    indent.writeln(
+      '// ignore_for_file: public_member_api_docs, non_constant_identifier_names, avoid_as, unused_import, unnecessary_parenthesis, prefer_null_aware_operators, omit_local_variable_types, unused_shown_name',
+    );
+    indent.writeln('// @dart = ${opt.isNullSafe ? '2.12' : '2.8'}');
   }
-  indent.writeln('// $generatedCodeWarning');
-  indent.writeln('// $seeAlsoWarning');
-  indent.writeln(
-    '// ignore_for_file: public_member_api_docs, non_constant_identifier_names, avoid_as, unused_import, unnecessary_parenthesis, prefer_null_aware_operators, omit_local_variable_types, unused_shown_name',
-  );
-  indent.writeln('// @dart = ${opt.isNullSafe ? '2.12' : '2.8'}');
-  indent.writeln('import \'dart:async\';');
-  indent.writeln(
-    'import \'dart:typed_data\' show Uint8List, Int32List, Int64List, Float64List;',
-  );
-  indent.addln('');
-  indent.writeln(
-      'import \'package:flutter/foundation.dart\' show WriteBuffer, ReadBuffer;');
-  indent.writeln('import \'package:flutter/services.dart\';');
-  for (final Enum anEnum in root.enums) {
-    indent.writeln('');
-    indent.write('enum ${anEnum.name} ');
-    indent.scoped('{', '}', () {
-      for (final String member in anEnum.members) {
-        indent.writeln('$member,');
-      }
-    });
+
+  void writeEnums() {
+    for (final Enum anEnum in root.enums) {
+      indent.writeln('');
+      indent.write('enum ${anEnum.name} ');
+      indent.scoped('{', '}', () {
+        for (final String member in anEnum.members) {
+          indent.writeln('$member,');
+        }
+      });
+    }
   }
-  for (final Class klass in root.classes) {
-    indent.writeln('');
-    indent.write('class ${klass.name} ');
-    indent.scoped('{', '}', () {
-      for (final NamedType field in klass.fields) {
-        final String datatype = _addGenericTypesNullable(field, nullTag);
-        indent.writeln('$datatype ${field.name};');
-      }
-      if (klass.fields.isNotEmpty) {
-        indent.writeln('');
-      }
+
+  void writeImports() {
+    indent.writeln('import \'dart:async\';');
+    indent.writeln(
+      'import \'dart:typed_data\' show Uint8List, Int32List, Int64List, Float64List;',
+    );
+    indent.addln('');
+    indent.writeln(
+        'import \'package:flutter/foundation.dart\' show WriteBuffer, ReadBuffer;');
+    indent.writeln('import \'package:flutter/services.dart\';');
+  }
+
+  void writeDataClass(Class klass) {
+    void writeConstructor() {
+      indent.write(klass.name);
+      indent.scoped('({', '});', () {
+        for (final NamedType field in klass.fields) {
+          final String required = field.type.isNullable ? '' : 'required ';
+          indent.writeln('${required}this.${field.name},');
+        }
+      });
+    }
+
+    void writeEncode() {
       indent.write('Object encode() ');
       indent.scoped('{', '}', () {
         indent.writeln(
@@ -431,7 +485,44 @@ void generateDart(DartOptions opt, Root root, StringSink sink) {
         }
         indent.writeln('return pigeonMap;');
       });
-      indent.writeln('');
+    }
+
+    void writeDecode() {
+      void writeValueDecode(NamedType field) {
+        if (customClassNames.contains(field.type.baseName)) {
+          indent.format('''
+pigeonMap['${field.name}'] != null
+\t\t? ${field.type.baseName}.decode(pigeonMap['${field.name}']$unwrapOperator)
+\t\t: null''', leadingSpace: false, trailingNewline: false);
+        } else if (customEnumNames.contains(field.type.baseName)) {
+          indent.format('''
+pigeonMap['${field.name}'] != null
+\t\t? ${field.type.baseName}.values[pigeonMap['${field.name}']$unwrapOperator as int]
+\t\t: null''', leadingSpace: false, trailingNewline: false);
+        } else if (field.type.typeArguments.isNotEmpty) {
+          final String genericType =
+              _makeGenericTypeArguments(field.type, nullTag);
+          final String castCall = _makeGenericCastCall(field.type, nullTag);
+          final String castCallPrefix =
+              field.type.isNullable ? nullTag : unwrapOperator;
+          indent.add(
+            '(pigeonMap[\'${field.name}\'] as $genericType$nullTag)$castCallPrefix$castCall',
+          );
+        } else {
+          final String genericdType =
+              _addGenericTypesNullable(field.type, nullTag);
+          if (field.type.isNullable) {
+            indent.add(
+              'pigeonMap[\'${field.name}\'] as $genericdType',
+            );
+          } else {
+            indent.add(
+              'pigeonMap[\'${field.name}\']$unwrapOperator as $genericdType',
+            );
+          }
+        }
+      }
+
       indent.write(
         'static ${klass.name} decode(Object message) ',
       );
@@ -439,46 +530,53 @@ void generateDart(DartOptions opt, Root root, StringSink sink) {
         indent.writeln(
           'final Map<Object$nullTag, Object$nullTag> pigeonMap = message as Map<Object$nullTag, Object$nullTag>;',
         );
-        indent.writeln('return ${klass.name}()');
-        indent.nest(1, () {
+        indent.write('return ${klass.name}');
+        indent.scoped('(', ');', () {
           for (int index = 0; index < klass.fields.length; index += 1) {
             final NamedType field = klass.fields[index];
-            indent.write('..${field.name} = ');
-            if (customClassNames.contains(field.type.baseName)) {
-              indent.format('''
-pigeonMap['${field.name}'] != null
-\t\t? ${field.type.baseName}.decode(pigeonMap['${field.name}']$unwrapOperator)
-\t\t: null''', leadingSpace: false, trailingNewline: false);
-            } else if (customEnumNames.contains(field.type.baseName)) {
-              indent.format('''
-pigeonMap['${field.name}'] != null
-\t\t? ${field.type.baseName}.values[pigeonMap['${field.name}']$unwrapOperator as int]
-\t\t: null''', leadingSpace: false, trailingNewline: false);
-            } else if (field.type.typeArguments.isNotEmpty) {
-              final String genericType =
-                  _makeGenericTypeArguments(field.type, nullTag);
-              final String castCall = _makeGenericCastCall(field.type, nullTag);
-              indent.add(
-                '(pigeonMap[\'${field.name}\'] as $genericType$nullTag)$nullTag$castCall',
-              );
-            } else {
-              indent.add(
-                'pigeonMap[\'${field.name}\'] as ${_addGenericTypesNullable(field, nullTag)}',
-              );
-            }
-            indent.addln(index == klass.fields.length - 1 ? ';' : '');
+            indent.write('${field.name}: ');
+            writeValueDecode(field);
+            indent.addln(',');
           }
         });
       });
+    }
+
+    indent.write('class ${klass.name} ');
+    indent.scoped('{', '}', () {
+      writeConstructor();
+      indent.addln('');
+      for (final NamedType field in klass.fields) {
+        final String datatype = _addGenericTypesNullable(field.type, nullTag);
+        indent.writeln('$datatype ${field.name};');
+      }
+      if (klass.fields.isNotEmpty) {
+        indent.writeln('');
+      }
+      writeEncode();
+      indent.writeln('');
+      writeDecode();
     });
   }
-  for (final Api api in root.apis) {
-    indent.writeln('');
+
+  void writeApi(Api api) {
     if (api.location == ApiLocation.host) {
       _writeHostApi(opt, indent, api, root);
     } else if (api.location == ApiLocation.flutter) {
       _writeFlutterApi(opt, indent, api, root);
     }
+  }
+
+  writeHeader();
+  writeImports();
+  writeEnums();
+  for (final Class klass in root.classes) {
+    indent.writeln('');
+    writeDataClass(klass);
+  }
+  for (final Api api in root.apis) {
+    indent.writeln('');
+    writeApi(api);
   }
 }
 
@@ -497,8 +595,9 @@ void generateTestDart(
   indent.writeln('// $generatedCodeWarning');
   indent.writeln('// $seeAlsoWarning');
   indent.writeln(
-    '// ignore_for_file: public_member_api_docs, non_constant_identifier_names, avoid_as, unused_import',
+    '// ignore_for_file: public_member_api_docs, non_constant_identifier_names, avoid_as, unused_import, unnecessary_parenthesis',
   );
+  indent.writeln('// ignore_for_file: avoid_relative_lib_imports');
   indent.writeln('// @dart = ${opt.isNullSafe ? '2.12' : '2.8'}');
   indent.writeln('import \'dart:async\';');
   indent.writeln(
@@ -509,6 +608,8 @@ void generateTestDart(
   indent.writeln('import \'package:flutter/services.dart\';');
   indent.writeln('import \'package:flutter_test/flutter_test.dart\';');
   indent.writeln('');
+  // TODO(gaaclarke): Switch from relative paths to URIs. This fails in new versions of Dart,
+  // https://github.com/flutter/flutter/issues/97744.
   indent.writeln(
     'import \'${_escapeForDartSingleQuotedString(mainDartFile)}\';',
   );

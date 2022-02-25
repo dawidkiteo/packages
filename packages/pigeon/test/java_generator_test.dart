@@ -31,7 +31,7 @@ void main() {
     final String code = sink.toString();
     expect(code, contains('public class Messages'));
     expect(code, contains('public static class Foobar'));
-    expect(code, contains('private Long field1;'));
+    expect(code, contains('private @Nullable Long field1;'));
   });
 
   test('gen one enum', () {
@@ -200,14 +200,14 @@ void main() {
     const JavaOptions javaOptions = JavaOptions(className: 'Messages');
     generateJava(javaOptions, root, sink);
     final String code = sink.toString();
-    expect(code, contains('private Boolean aBool;'));
-    expect(code, contains('private Long aInt;'));
-    expect(code, contains('private Double aDouble;'));
-    expect(code, contains('private String aString;'));
-    expect(code, contains('private byte[] aUint8List;'));
-    expect(code, contains('private int[] aInt32List;'));
-    expect(code, contains('private long[] aInt64List;'));
-    expect(code, contains('private double[] aFloat64List;'));
+    expect(code, contains('private @Nullable Boolean aBool;'));
+    expect(code, contains('private @Nullable Long aInt;'));
+    expect(code, contains('private @Nullable Double aDouble;'));
+    expect(code, contains('private @Nullable String aString;'));
+    expect(code, contains('private @Nullable byte[] aUint8List;'));
+    expect(code, contains('private @Nullable int[] aInt32List;'));
+    expect(code, contains('private @Nullable long[] aInt64List;'));
+    expect(code, contains('private @Nullable double[] aFloat64List;'));
   });
 
   test('gen one flutter api', () {
@@ -408,7 +408,7 @@ void main() {
     generateJava(javaOptions, root, sink);
     final String code = sink.toString();
     expect(code, contains('public static class Foobar'));
-    expect(code, contains('private List<Object> field1;'));
+    expect(code, contains('private @Nullable List<Object> field1;'));
   });
 
   test('gen map', () {
@@ -428,7 +428,7 @@ void main() {
     generateJava(javaOptions, root, sink);
     final String code = sink.toString();
     expect(code, contains('public static class Foobar'));
-    expect(code, contains('private Map<Object, Object> field1;'));
+    expect(code, contains('private @Nullable Map<Object, Object> field1;'));
   });
 
   test('gen nested', () {
@@ -468,8 +468,8 @@ void main() {
     expect(code, contains('public class Messages'));
     expect(code, contains('public static class Outer'));
     expect(code, contains('public static class Nested'));
-    expect(code, contains('private Nested nested;'));
-    expect(code, contains('Nested.fromMap((Map)nested);'));
+    expect(code, contains('private @Nullable Nested nested;'));
+    expect(code, contains('Nested.fromMap((Map)nested)'));
     expect(code,
         contains('put("nested", (nested == null) ? null : nested.toMap());'));
   });
@@ -616,7 +616,7 @@ void main() {
     expect(
         code,
         contains(
-            'fromMapResult.enum1 = enum1 == null ? null : Enum1.values()[(int)enum1];'));
+            'pigeonResult.setEnum1(enum1 == null ? null : Enum1.values()[(int)enum1])'));
   });
 
   Iterable<String> _makeIterable(String string) sync* {
@@ -873,5 +873,53 @@ void main() {
         code,
         contains(
             'channel.send(new ArrayList<Object>(Arrays.asList(xArg, yArg)), channelReply ->'));
+  });
+
+  test('return nullable host', () {
+    final Root root = Root(
+      apis: <Api>[
+        Api(name: 'Api', location: ApiLocation.host, methods: <Method>[
+          Method(
+              name: 'doit',
+              returnType: const TypeDeclaration(
+                baseName: 'int',
+                isNullable: true,
+              ),
+              arguments: <NamedType>[])
+        ])
+      ],
+      classes: <Class>[],
+      enums: <Enum>[],
+    );
+    final StringBuffer sink = StringBuffer();
+    const JavaOptions javaOptions = JavaOptions(className: 'Messages');
+    generateJava(javaOptions, root, sink);
+    final String code = sink.toString();
+    expect(code, contains('@Nullable Long doit();'));
+  });
+
+  test('return nullable host async', () {
+    final Root root = Root(
+      apis: <Api>[
+        Api(name: 'Api', location: ApiLocation.host, methods: <Method>[
+          Method(
+              name: 'doit',
+              returnType: const TypeDeclaration(
+                baseName: 'int',
+                isNullable: true,
+              ),
+              isAsynchronous: true,
+              arguments: <NamedType>[])
+        ])
+      ],
+      classes: <Class>[],
+      enums: <Enum>[],
+    );
+    final StringBuffer sink = StringBuffer();
+    const JavaOptions javaOptions = JavaOptions(className: 'Messages');
+    generateJava(javaOptions, root, sink);
+    final String code = sink.toString();
+    // Java doesn't accept nullability annotations in type arguments.
+    expect(code, contains('Result<Long>'));
   });
 }
