@@ -42,7 +42,7 @@ abstract class RichTextBase extends Widget {
   const RichTextBase({Key? key}) : super(key: key);
 
   /// Text span for this rich text
-  TextSpan get textSpan;
+  InlineSpan get textSpan;
 }
 
 /// Builder for custom rich text
@@ -107,7 +107,7 @@ abstract class MarkdownBuilderDelegate {
 /// See also:
 ///
 ///  * [Markdown], which is a widget that parses and displays Markdown.
-class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
+class MarkdownBuilder implements md.NodeVisitor {
   /// Creates an object that builds a [Widget] tree from parsed Markdown.
   MarkdownBuilder({
     required this.delegate,
@@ -168,7 +168,7 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
   /// Called when building rich text
   ///
   /// It is optional, default builder builds [RichText] or [SelectableText.rich]
-  final RichTextBuilder<T>? richTextBuilder;
+  final RichTextBuilder? richTextBuilder;
 
   /// Default tap handler used when [selectable] is set to true
   final VoidCallback? onTapText;
@@ -731,21 +731,58 @@ class MarkdownBuilder<T extends RichTextBase> implements md.NodeVisitor {
           ),
         );
       } else if (mergedTexts.isNotEmpty &&
-          mergedTexts.last is T &&
-          child is T) {
-        final T previous = mergedTexts.removeLast() as T;
-        final TextSpan previousTextSpan = previous.textSpan;
-        final List<TextSpan> children = previousTextSpan.children != null
-            ? List<TextSpan>.from(previousTextSpan.children!)
-            : <TextSpan>[previousTextSpan];
-        children.add(child.textSpan);
-        final TextSpan? mergedSpan = _mergeSimilarTextSpans(children);
-        mergedTexts.add(
-          _buildRichText(
-            mergedSpan,
-            textAlign: textAlign,
-          ),
-        );
+          mergedTexts.last is RichTextBase &&
+          child is RichTextBase) {
+        final RichTextBase previous = mergedTexts.removeLast() as RichTextBase;
+        final InlineSpan previousTextSpan = previous.textSpan;
+        final InlineSpan currentSpan = child.textSpan;
+
+        if (previousTextSpan is TextSpan && currentSpan is TextSpan) {
+          final List<TextSpan> children = previousTextSpan.children != null
+              ? List<TextSpan>.from(previousTextSpan.children!)
+              : <TextSpan>[previousTextSpan];
+          children.add(currentSpan);
+          final TextSpan? mergedSpan = _mergeSimilarTextSpans(children);
+
+          mergedTexts.add(
+            _buildRichText(
+              mergedSpan,
+              textAlign: textAlign,
+            ),
+          );
+        } else if (previousTextSpan is TextSpan) {
+          final List<InlineSpan> children = previousTextSpan.children != null
+              ? List<TextSpan>.from(previousTextSpan.children!)
+              : <TextSpan>[previousTextSpan];
+          children.add(currentSpan);
+          mergedTexts.add(
+            RichText(
+              text: TextSpan(children: children),
+            ),
+          );
+        } else if (currentSpan is TextSpan) {
+          final List<InlineSpan> children = [previousTextSpan];
+          final List<InlineSpan> currentChildren = currentSpan.children != null
+              ? List<TextSpan>.from(currentSpan.children!)
+              : <TextSpan>[currentSpan];
+          children.addAll(currentChildren);
+          mergedTexts.add(
+            RichText(
+              text: TextSpan(children: children),
+            ),
+          );
+        } else {
+          mergedTexts.add(
+            RichText(
+              text: TextSpan(
+                children: [
+                  previousTextSpan,
+                  currentSpan,
+                ],
+              ),
+            ),
+          );
+        }
       } else {
         mergedTexts.add(child);
       }
